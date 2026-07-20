@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+      background: #f4f6f8;
+      margin: 0;
+      padding: 20px;
+      color: #2a2f36;
+    }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    .nav { margin-bottom: 20px; }
+    .nav a {
+      display: inline-block;
+      margin-right: 8px;
+      padding: 6px 14px;
+      background: #fff;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      text-decoration: none;
+      color: #2a2f36;
+      font-size: 13px;
+    }
+    .nav a.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .card h2 { font-size: 16px; margin-top: 0; margin-bottom: 14px; border-left: 4px solid #2563eb; padding-left: 8px; }
+
+    .month-nav { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; }
+    .month-nav button {
+      padding: 6px 12px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px;
+    }
+    .month-nav button:hover { background: #f0f4f8; }
+    .month-label { font-size: 16px; font-weight: 600; min-width: 110px; text-align: center; }
+
+    .calendar { width: 100%; border-collapse: collapse; }
+    .calendar th {
+      padding: 6px 4px; font-size: 12px; color: #57606a; border-bottom: 1px solid #eee;
+    }
+    .calendar td {
+      width: 14.28%; height: 64px; border: 1px solid #eee; vertical-align: top; padding: 4px 6px;
+      cursor: pointer; position: relative; font-size: 12px;
+    }
+    .calendar td:hover { background: #f0f6ff; }
+    .calendar td.other-month { color: #c8ccd1; cursor: default; }
+    .calendar td.other-month:hover { background: transparent; }
+    .calendar td.today { background: #fff8e1; }
+    .calendar td.selected { outline: 2px solid #2563eb; outline-offset: -2px; }
+    .day-num { font-weight: 600; }
+    .day-badge {
+      display: inline-block; margin-top: 4px; padding: 1px 6px; border-radius: 8px;
+      background: #eef2ff; color: #3730a3; font-size: 11px;
+    }
+    .sun { color: #d32f2f; }
+    .sat { color: #1565c0; }
+
+    .legend { display: flex; gap: 16px; margin: 0 0 12px; font-size: 12px; flex-wrap: wrap; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+    .empty { color: #8b949e; font-size: 13px; padding: 12px 0; }
+
+    .night-toggle-btn {
+      margin-bottom: 10px; padding: 6px 12px; border: 1px solid #d0d7de; border-radius: 6px;
+      background: #fff; cursor: pointer; font-size: 12px;
+    }
+    .night-toggle-btn:hover { background: #f0f4f8; }
+
+    .grid-wrap { overflow-x: auto; border: 1px solid #eee; border-radius: 8px; }
+    table.avail-grid { border-collapse: collapse; width: 100%; font-size: 12px; }
+    table.avail-grid th, table.avail-grid td {
+      border: 1px solid #eee; padding: 3px 4px; text-align: center; white-space: nowrap;
+    }
+    table.avail-grid th {
+      background: #fafbfc; color: #57606a; font-weight: 600; position: sticky; top: 0; z-index: 1;
+    }
+    table.avail-grid td.time-col, table.avail-grid th.time-col {
+      position: sticky; left: 0; background: #fafbfc; z-index: 2; font-variant-numeric: tabular-nums;
+      color: #57606a; width: 46px; max-width: 46px; font-size: 11px; padding: 3px 2px;
+    }
+    table.avail-grid th.time-col { z-index: 3; }
+    td.cell-available { background: #f0fdf4; color: #166534; cursor: pointer; }
+    td.cell-available:hover { background: #bbf7d0; }
+    td.cell-reserved { background: #fef2f2; color: #991b1b; cursor: pointer; font-size: 11px; }
+    td.cell-reserved:hover { background: #fecaca; }
+    td.cell-unavailable { background: #f3f4f6; color: #6b7280; cursor: default; }
+    td.cell-outofrange { background: #fbfbfb; color: #d0d5db; cursor: default; }
+    tr.night-row { display: none; }
+    tr.night-row.show { display: table-row; }
+
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      align-items: center; justify-content: center; z-index: 1000;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal-box {
+      background: #fff; border-radius: 12px; padding: 24px 28px; max-width: 420px; width: 90%;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    .modal-box h3 { font-size: 16px; margin: 0 0 16px; }
+    .modal-box label { display: block; font-size: 12px; color: #57606a; margin: 12px 0 4px; }
+    .modal-box label:first-of-type { margin-top: 0; }
+    .modal-box input {
+      width: 100%; padding: 7px 9px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 13px;
+    }
+    .modal-time-row { display: flex; gap: 10px; }
+    .modal-time-row > div { flex: 1; }
+    .modal-actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 20px; }
+    .modal-actions .btn { padding: 8px 16px; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 600; }
+    .btn-save { background: #2563eb; color: #fff; }
+    .btn-save:hover { background: #1d4ed8; }
+    .btn-delete { background: #fff; color: #d32f2f; border: 1px solid #d32f2f !important; }
+    .btn-delete:hover { background: #fef2f2; }
+    .btn-cancel { background: #fff; color: #57606a; border: 1px solid #d0d7de !important; }
+    .btn-cancel:hover { background: #f0f4f8; }
+    .modal-error { color: #991b1b; font-size: 12px; margin-top: 10px; display: none; }
+  </style>
+</head>
+<body>
+  <div class="modal-overlay" id="edit-modal">
+    <div class="modal-box">
+      <h3 id="edit-modal-title">予約の編集</h3>
+      <input type="hidden" id="edit-reservationId">
+      <input type="hidden" id="edit-vehicleId">
+
+      <div class="modal-time-row">
+        <div>
+          <label>利用開始日</label>
+          <input type="date" id="edit-startDate">
+        </div>
+        <div>
+          <label>開始時刻</label>
+          <input type="time" id="edit-startTime" step="1800">
+        </div>
+      </div>
+      <div class="modal-time-row">
+        <div>
+          <label>返却日</label>
+          <input type="date" id="edit-endDate">
+        </div>
+        <div>
+          <label>返却時刻</label>
+          <input type="time" id="edit-endTime" step="1800">
+        </div>
+      </div>
+
+      <label>利用者名</label>
+      <input type="text" id="edit-userName">
+      <label>利用目的</label>
+      <input type="text" id="edit-purpose">
+      <label>行き先</label>
+      <input type="text" id="edit-destination">
+
+      <div class="modal-error" id="edit-error"></div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-delete" id="edit-delete-btn">削除</button>
+        <div>
+          <button type="button" class="btn btn-cancel" id="edit-cancel-btn">キャンセル</button>
+          <button type="button" class="btn btn-save" id="edit-save-btn">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <h1>🚗 社用車予約管理 - 予約確認画面</h1>
+  <div class="nav">
+    <a href="<?!= webAppUrl ?>?page=master">マスタ画面</a>
+    <a class="active" href="<?!= webAppUrl ?>?page=reservation">予約確認画面</a>
+  </div>
+
+  <div class="card" id="no-vehicle-card" style="display:none;">
+    <div class="empty">先にマスタ画面で車両を登録してください。</div>
+  </div>
+
+  <div class="card" id="calendar-card" style="display:none;">
+    <h2>月間カレンダー(全車両の合計予約件数)</h2>
+    <div class="month-nav">
+      <button id="prev-month">← 前月</button>
+      <div class="month-label" id="month-label"></div>
+      <button id="next-month">翌月 →</button>
+      <button id="today-btn">今日</button>
+    </div>
+    <table class="calendar">
+      <thead>
+        <tr>
+          <th class="sun">日</th><th>月</th><th>火</th><th>水</th><th>木</th><th>金</th><th class="sat">土</th>
+        </tr>
+      </thead>
+      <tbody id="calendar-body"></tbody>
+    </table>
+  </div>
+
+  <div class="card" id="day-card" style="display:none;">
+    <h2 id="day-title">全車両の空き状況</h2>
+    <div class="legend">
+      <span><i style="background:#dcfce7;"></i>空き(クリックで予約登録へ)</span>
+      <span><i style="background:#fee2e2;"></i>予約済み</span>
+      <span><i style="background:#e5e7eb;"></i>使用不可</span>
+      <span><i style="background:#fbfbfb; border:1px solid #eee;"></i>利用可能時間外</span>
+    </div>
+    <button type="button" class="night-toggle-btn" id="night-toggle-btn" style="display:none;">🌙 夜間(18:00〜翌7:00)の空き状況を表示</button>
+    <div class="grid-wrap">
+      <table class="avail-grid" id="avail-grid"></table>
+    </div>
+  </div>
+
+  <script>
+    const WEBAPP_URL = '<?!= webAppUrl ?>';
+    const SLOT_MINUTES = 30;
+    const NIGHT_END_MIN = 7 * 60;
+    const NIGHT_START_MIN = 18 * 60;
+
+    let vehicles = [];
+    let currentYear, currentMonth;
+    let selectedDate = null;
+    let monthReservations = [];
+    let unavailablePeriods = [];
+
+    function pad2(n) { return ('0' + n).slice(-2); }
+    function toDateStr(y, m, d) { return y + '-' + pad2(m) + '-' + pad2(d); }
+    function timeToMinutes(t) {
+      const parts = t.split(':');
+      return Number(parts[0]) * 60 + Number(parts[1]);
+    }
+    function minutesToTime(min) {
+      return pad2(Math.floor(min / 60)) + ':' + pad2(min % 60);
+    }
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+      });
+    }
+    function onError(err) {
+      alert('エラーが発生しました: ' + (err.message || err));
+    }
+
+    const today = new Date();
+    currentYear = today.getFullYear();
+    currentMonth = today.getMonth() + 1;
+
+    function init() {
+      google.script.run.withSuccessHandler(function (list) {
+        vehicles = list;
+        if (list.length === 0) {
+          document.getElementById('no-vehicle-card').style.display = 'block';
+          return;
+        }
+        document.getElementById('calendar-card').style.display = 'block';
+        loadMonthReservations();
+      }).withFailureHandler(onError).getVehicles();
+
+      google.script.run.withSuccessHandler(function (list) {
+        unavailablePeriods = list;
+      }).withFailureHandler(onError).getUnavailablePeriods();
+    }
+
+    function loadMonthReservations() {
+      google.script.run.withSuccessHandler(function (list) {
+        monthReservations = list;
+        renderCalendar();
+        if (selectedDate) renderDayGrid(selectedDate);
+      }).withFailureHandler(onError).getReservationsForMonthAllVehicles(currentYear, currentMonth);
+    }
+
+    document.getElementById('prev-month').addEventListener('click', function () { changeMonth(-1); });
+    document.getElementById('next-month').addEventListener('click', function () { changeMonth(1); });
+    document.getElementById('today-btn').addEventListener('click', function () {
+      currentYear = today.getFullYear();
+      currentMonth = today.getMonth() + 1;
+      loadMonthReservations();
+    });
+
+    function changeMonth(diff) {
+      currentMonth += diff;
+      if (currentMonth < 1) { currentMonth = 12; currentYear--; }
+      if (currentMonth > 12) { currentMonth = 1; currentYear++; }
+      loadMonthReservations();
+    }
+
+    function renderCalendar() {
+      document.getElementById('month-label').textContent = currentYear + '年' + currentMonth + '月';
+
+      const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+      const countByDate = {};
+      for (let d = 1; d <= daysInMonth; d++) {
+        const ds = toDateStr(currentYear, currentMonth, d);
+        const dStart = new Date(ds + 'T00:00:00');
+        const dEnd = new Date(ds + 'T23:59:59');
+        const count = monthReservations.filter(function (r) {
+          const rs = new Date(r.start), re = new Date(r.end);
+          return rs <= dEnd && re >= dStart;
+        }).length;
+        if (count > 0) countByDate[ds] = count;
+      }
+
+      const firstDay = new Date(currentYear, currentMonth - 1, 1);
+      const startWeekday = firstDay.getDay();
+      const todayStr = toDateStr(today.getFullYear(), today.getMonth() + 1, today.getDate());
+
+      const tbody = document.getElementById('calendar-body');
+      tbody.innerHTML = '';
+      let dateCursor = 1 - startWeekday;
+
+      for (let week = 0; week < 6 && dateCursor <= daysInMonth; week++) {
+        const tr = document.createElement('tr');
+        for (let dow = 0; dow < 7; dow++, dateCursor++) {
+          const td = document.createElement('td');
+          if (dateCursor < 1 || dateCursor > daysInMonth) {
+            td.className = 'other-month';
+          } else {
+            const dateStr = toDateStr(currentYear, currentMonth, dateCursor);
+            let cls = '';
+            if (dateStr === todayStr) cls += ' today';
+            if (dateStr === selectedDate) cls += ' selected';
+            td.className = cls.trim();
+            const count = countByDate[dateStr] || 0;
+            td.innerHTML = '<div class="day-num">' + dateCursor + '</div>' +
+              (count > 0 ? '<span class="day-badge">' + count + '件</span>' : '');
+            td.addEventListener('click', (function (ds) {
+              return function () { selectDate(ds); };
+            })(dateStr));
+          }
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+    }
+
+    function selectDate(dateStr) {
+      selectedDate = dateStr;
+      renderCalendar();
+      renderDayGrid(dateStr);
+    }
+
+    function renderDayGrid(dateStr) {
+      document.getElementById('day-card').style.display = 'block';
+      const d = new Date(dateStr + 'T00:00:00');
+      const weekday = ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
+      document.getElementById('day-title').textContent = dateStr + '(' + weekday + ')の全車両 空き状況';
+
+      const dayStart = new Date(dateStr + 'T00:00:00');
+      const dayEnd = new Date(dateStr + 'T23:59:59');
+      const dayReservations = monthReservations.filter(function (r) {
+        const rs = new Date(r.start), re = new Date(r.end);
+        return rs <= dayEnd && re >= dayStart;
+      });
+      const dayUnavailable = unavailablePeriods.filter(function (p) {
+        const ps = new Date(p.start), pe = new Date(p.end);
+        return ps <= dayEnd && pe >= dayStart;
+      });
+
+      const table = document.getElementById('avail-grid');
+      table.innerHTML = '';
+
+      const thead = document.createElement('thead');
+      const headRow = document.createElement('tr');
+      headRow.innerHTML = '<th class="time-col">時間</th>' + vehicles.map(function (v) {
+        return '<th>' + escapeHtml(v.name) + '</th>';
+      }).join('');
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      let hasNightSlots = false;
+
+      for (let m = 0; m < 24 * 60; m += SLOT_MINUTES) {
+        const slotStart = m;
+        const slotEnd = m + SLOT_MINUTES;
+        const slotStartTime = minutesToTime(slotStart);
+        const slotEndTime = minutesToTime(slotEnd % (24 * 60) === 0 ? 24 * 60 : slotEnd);
+        const slotStartDate = new Date(dateStr + 'T' + pad2(Math.floor(slotStart / 60)) + ':' + pad2(slotStart % 60) + ':00');
+        const slotEndDate = new Date(slotStartDate.getTime() + SLOT_MINUTES * 60000);
+
+        const isNight = slotEnd <= NIGHT_END_MIN || slotStart >= NIGHT_START_MIN;
+        if (isNight) hasNightSlots = true;
+
+        const tr = document.createElement('tr');
+        if (isNight) tr.className = 'night-row';
+
+        let rowHtml = '<td class="time-col">' + slotStartTime + '</td>';
+
+        vehicles.forEach(function (v) {
+          const hasLimit = !!(v.availableStart && v.availableEnd);
+          const inRange = !hasLimit || (timeToMinutes(v.availableStart) <= slotStart && timeToMinutes(v.availableEnd) >= slotEnd);
+
+          if (!inRange) {
+            rowHtml += '<td class="cell-outofrange">-</td>';
+            return;
+          }
+
+          const unavailable = dayUnavailable.find(function (p) {
+            return Number(p.vehicleId) === Number(v.vehicleId) &&
+              new Date(p.start) < slotEndDate && new Date(p.end) > slotStartDate;
+          });
+          if (unavailable) {
+            rowHtml += '<td class="cell-unavailable" title="' + escapeHtml(unavailable.reason || '使用不可') + '">✕</td>';
+            return;
+          }
+
+          const reservation = dayReservations.find(function (r) {
+            return Number(r.vehicleId) === Number(v.vehicleId) &&
+              new Date(r.start) < slotEndDate && new Date(r.end) > slotStartDate;
+          });
+          if (reservation) {
+            rowHtml += '<td class="cell-reserved" data-reservation-id="' + reservation.reservationId + '" title="クリックして編集・削除 / ' +
+              escapeHtml(reservation.userName || '') + (reservation.purpose ? ' / ' + escapeHtml(reservation.purpose) : '') +
+              '">' + escapeHtml((reservation.userName || '').slice(0, 6)) + '</td>';
+            return;
+          }
+
+          rowHtml += '<td class="cell-available" data-vehicle-id="' + v.vehicleId +
+            '" data-start="' + slotStartTime + '" data-end="' + slotEndTime + '">○</td>';
+        });
+
+        tr.innerHTML = rowHtml;
+        tbody.appendChild(tr);
+      }
+
+      table.appendChild(tbody);
+
+      const toggleBtn = document.getElementById('night-toggle-btn');
+      if (hasNightSlots) {
+        toggleBtn.style.display = 'inline-block';
+        toggleBtn.textContent = '🌙 夜間(18:00〜翌7:00)の空き状況を表示';
+        toggleBtn.onclick = function () {
+          const nightRows = table.querySelectorAll('tr.night-row');
+          const nowShown = nightRows.length > 0 && nightRows[0].classList.contains('show');
+          nightRows.forEach(function (row) { row.classList.toggle('show', !nowShown); });
+          toggleBtn.textContent = !nowShown
+            ? '🌙 夜間(18:00〜翌7:00)を隠す'
+            : '🌙 夜間(18:00〜翌7:00)の空き状況を表示';
+        };
+      } else {
+        toggleBtn.style.display = 'none';
+      }
+
+      Array.prototype.forEach.call(table.querySelectorAll('.cell-available'), function (el) {
+        el.addEventListener('click', function () {
+          const vehicleId = el.getAttribute('data-vehicle-id');
+          const start = el.getAttribute('data-start');
+          const end = el.getAttribute('data-end');
+          const url = WEBAPP_URL + '?page=register&vehicleId=' + vehicleId +
+            '&startDate=' + dateStr + '&startTime=' + start +
+            '&endDate=' + dateStr + '&endTime=' + end;
+          window.top.location.href = url;
+        });
+      });
+
+      Array.prototype.forEach.call(table.querySelectorAll('.cell-reserved'), function (el) {
+        el.addEventListener('click', function () {
+          const reservationId = el.getAttribute('data-reservation-id');
+          const reservation = dayReservations.find(function (r) { return String(r.reservationId) === String(reservationId); });
+          if (reservation) openEditModal(reservation);
+        });
+      });
+    }
+
+    // ---------- 編集・削除モーダル ----------
+    function splitDateTime(iso) {
+      // 'yyyy-MM-ddTHH:mm:ss' 形式の文字列を日付と時刻に分割
+      const d = new Date(iso);
+      const dateStr = toDateStr(d.getFullYear(), d.getMonth() + 1, d.getDate());
+      const timeStr = pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+      return { date: dateStr, time: timeStr };
+    }
+
+    function openEditModal(reservation) {
+      const startParts = splitDateTime(reservation.start);
+      const endParts = splitDateTime(reservation.end);
+
+      document.getElementById('edit-reservationId').value = reservation.reservationId;
+      document.getElementById('edit-vehicleId').value = reservation.vehicleId;
+      document.getElementById('edit-startDate').value = startParts.date;
+      document.getElementById('edit-startTime').value = startParts.time;
+      document.getElementById('edit-endDate').value = endParts.date;
+      document.getElementById('edit-endTime').value = endParts.time;
+      document.getElementById('edit-userName').value = reservation.userName || '';
+      document.getElementById('edit-purpose').value = reservation.purpose || '';
+      document.getElementById('edit-destination').value = reservation.destination || '';
+
+      const vehicle = vehicles.find(function (v) { return String(v.vehicleId) === String(reservation.vehicleId); });
+      document.getElementById('edit-modal-title').textContent =
+        '予約の編集・削除' + (vehicle ? '(' + vehicle.name + ')' : '');
+
+      document.getElementById('edit-error').style.display = 'none';
+      document.getElementById('edit-modal').classList.add('show');
+    }
+
+    function closeEditModal() {
+      document.getElementById('edit-modal').classList.remove('show');
+    }
+
+    function showEditError(msg) {
+      const box = document.getElementById('edit-error');
+      box.textContent = msg;
+      box.style.display = 'block';
+    }
+
+    document.getElementById('edit-cancel-btn').addEventListener('click', closeEditModal);
+
+    document.getElementById('edit-save-btn').addEventListener('click', function () {
+      const reservation = {
+        reservationId: document.getElementById('edit-reservationId').value,
+        vehicleId: document.getElementById('edit-vehicleId').value,
+        startDate: document.getElementById('edit-startDate').value,
+        startTime: document.getElementById('edit-startTime').value,
+        endDate: document.getElementById('edit-endDate').value,
+        endTime: document.getElementById('edit-endTime').value,
+        userName: document.getElementById('edit-userName').value.trim(),
+        purpose: document.getElementById('edit-purpose').value.trim(),
+        destination: document.getElementById('edit-destination').value.trim()
+      };
+      if (!reservation.startDate || !reservation.startTime || !reservation.endDate || !reservation.endTime || !reservation.userName) {
+        showEditError('利用開始日時・返却日時・利用者名は必須です。');
+        return;
+      }
+      google.script.run
+        .withSuccessHandler(function () {
+          closeEditModal();
+          loadMonthReservations();
+        })
+        .withFailureHandler(function (err) {
+          showEditError(err && err.message ? err.message : String(err));
+        })
+        .updateReservation(reservation);
+    });
+
+    document.getElementById('edit-delete-btn').addEventListener('click', function () {
+      const reservationId = document.getElementById('edit-reservationId').value;
+      if (!confirm('この予約を削除しますか?')) return;
+      google.script.run
+        .withSuccessHandler(function () {
+          closeEditModal();
+          loadMonthReservations();
+        })
+        .withFailureHandler(function (err) {
+          showEditError(err && err.message ? err.message : String(err));
+        })
+        .deleteReservation(reservationId);
+    });
+
+    init();
+  </script>
+</body>
+</html>

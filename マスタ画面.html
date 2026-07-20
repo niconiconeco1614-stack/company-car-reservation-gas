@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+      background: #f4f6f8;
+      margin: 0;
+      padding: 20px;
+      color: #2a2f36;
+    }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    .nav { margin-bottom: 20px; }
+    .nav a {
+      display: inline-block;
+      margin-right: 8px;
+      padding: 6px 14px;
+      background: #fff;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      text-decoration: none;
+      color: #2a2f36;
+      font-size: 13px;
+    }
+    .nav a.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .card h2 { font-size: 16px; margin-top: 0; margin-bottom: 14px; border-left: 4px solid #2563eb; padding-left: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid #eee; text-align: left; }
+    th { background: #fafbfc; color: #57606a; font-weight: 600; }
+    tr:hover { background: #f8fafc; }
+    .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 14px; }
+    label { display: block; font-size: 12px; color: #57606a; margin-bottom: 4px; }
+    input, textarea { width: 100%; padding: 7px 9px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 13px; }
+    .btn {
+      padding: 8px 16px; border: none; border-radius: 6px; font-size: 13px;
+      cursor: pointer; font-weight: 600;
+    }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-danger { background: #fff; color: #d32f2f; border: 1px solid #d32f2f; }
+    .btn-danger:hover { background: #fef2f2; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .btn-link { background: none; color: #2563eb; text-decoration: underline; padding: 0; }
+    .actions button { margin-right: 6px; }
+    .empty { color: #8b949e; font-size: 13px; padding: 12px 0; }
+    select { width: 100%; padding: 7px 9px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 13px; }
+    .toast {
+      position: fixed; top: 16px; right: 16px; background: #22314a; color: #fff;
+      padding: 10px 16px; border-radius: 6px; font-size: 13px; opacity: 0; transition: opacity .3s;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; background: #eef2ff; color: #3730a3; }
+  </style>
+</head>
+<body>
+  <h1>🚗 社用車予約管理 - マスタ画面</h1>
+  <div class="nav">
+    <a class="active" href="<?!= webAppUrl ?>?page=master">マスタ画面</a>
+    <a href="<?!= webAppUrl ?>?page=reservation">予約確認画面</a>
+  </div>
+
+  <div class="card">
+    <h2 id="form-title">車両を新規登録</h2>
+    <form id="vehicle-form">
+      <input type="hidden" id="vehicleId">
+      <div class="form-grid">
+        <div>
+          <label>車種名 *</label>
+          <input type="text" id="name" required placeholder="例:プリウス">
+        </div>
+        <div>
+          <label>ナンバープレート</label>
+          <input type="text" id="plateNumber" placeholder="例:品川300 あ 12-34">
+        </div>
+        <div>
+          <label>定員</label>
+          <input type="number" id="capacity" min="1" placeholder="例:5">
+        </div>
+        <div></div>
+        <div style="grid-column: 1 / -1;">
+          <label style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+            <input type="checkbox" id="noTimeLimit" style="width:auto;">
+            時間帯を制限しない(出張など日をまたぐ利用も想定)
+          </label>
+        </div>
+        <div id="time-range-fields" style="display:contents;">
+          <div>
+            <label>利用可能開始時刻</label>
+            <input type="time" id="availableStart" value="09:00">
+          </div>
+          <div>
+            <label>利用可能終了時刻</label>
+            <input type="time" id="availableEnd" value="18:00">
+          </div>
+        </div>
+        <div style="grid-column: 1 / -1;">
+          <label>備考</label>
+          <textarea id="note" rows="2"></textarea>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary">登録する</button>
+      <button type="button" class="btn btn-link" id="cancel-edit" style="display:none;">編集をキャンセル</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>登録済み車両一覧</h2>
+    <table id="vehicle-table">
+      <thead>
+        <tr>
+          <th>ID</th><th>車種名</th><th>ナンバー</th><th>定員</th><th>利用可能時間</th><th>備考</th><th>操作</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div class="empty" id="vehicle-empty" style="display:none;">まだ車両が登録されていません。</div>
+  </div>
+
+  <div class="card">
+    <h2>使用不可期間の管理(車検・点検など)</h2>
+    <label>対象車両</label>
+    <select id="up-vehicle-select"></select>
+
+    <div class="form-grid" style="margin-top:14px;">
+      <div>
+        <label>開始日時 *</label>
+        <input type="datetime-local" id="up-start" required>
+      </div>
+      <div>
+        <label>終了日時 *</label>
+        <input type="datetime-local" id="up-end" required>
+      </div>
+      <div style="grid-column: 1 / -1;">
+        <label>理由</label>
+        <input type="text" id="up-reason" placeholder="例:12ヶ月点検">
+      </div>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm" id="up-add">使用不可期間を追加</button>
+
+    <table style="margin-top:16px;">
+      <thead><tr><th>期間</th><th>理由</th><th>操作</th></tr></thead>
+      <tbody id="up-table-body"></tbody>
+    </table>
+    <div class="empty" id="up-empty" style="display:none;">この車両の使用不可期間はまだ登録されていません。</div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let vehicles = [];
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(function () { t.classList.remove('show'); }, 2200);
+    }
+
+    function formatTime(v) {
+      if (!v) return '';
+      if (v instanceof Date) {
+        return Utilities === undefined ? v.toString() : v;
+      }
+      return v;
+    }
+
+    function loadVehicles() {
+      google.script.run.withSuccessHandler(renderVehicles).withFailureHandler(onError).getVehicles();
+    }
+
+    function renderVehicles(list) {
+      vehicles = list;
+      const tbody = document.querySelector('#vehicle-table tbody');
+      tbody.innerHTML = '';
+      document.getElementById('vehicle-empty').style.display = list.length === 0 ? 'block' : 'none';
+
+      list.forEach(function (v) {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>' + v.vehicleId + '</td>' +
+          '<td>' + escapeHtml(v.name) + '</td>' +
+          '<td>' + escapeHtml(v.plateNumber || '') + '</td>' +
+          '<td>' + (v.capacity || '') + '</td>' +
+          '<td><span class="badge">' + formatAvailability(v.availableStart, v.availableEnd) + '</span></td>' +
+          '<td>' + escapeHtml(v.note || '') + '</td>' +
+          '<td class="actions">' +
+            '<button class="btn btn-sm" onclick="editVehicle(' + v.vehicleId + ')">編集</button>' +
+            '<button class="btn btn-sm btn-danger" onclick="removeVehicle(' + v.vehicleId + ')">削除</button>' +
+          '</td>';
+        tbody.appendChild(tr);
+      });
+
+      renderVehicleSelect(list);
+    }
+
+    function formatAvailability(start, end) {
+      if (!start || !end) return '制限なし(24時間)';
+      return formatTimeValue(start) + ' 〜 ' + formatTimeValue(end);
+    }
+
+    function formatTimeValue(v) {
+      if (!v) return '';
+      if (typeof v === 'string') return v;
+      // GASからDateオブジェクトとしてシリアライズされるケースに対応
+      try {
+        const d = new Date(v);
+        const h = ('0' + d.getHours()).slice(-2);
+        const m = ('0' + d.getMinutes()).slice(-2);
+        return h + ':' + m;
+      } catch (e) {
+        return String(v);
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+      });
+    }
+
+    function editVehicle(id) {
+      const v = vehicles.find(function (x) { return x.vehicleId === id; });
+      if (!v) return;
+      document.getElementById('vehicleId').value = v.vehicleId;
+      document.getElementById('name').value = v.name;
+      document.getElementById('plateNumber').value = v.plateNumber || '';
+      document.getElementById('capacity').value = v.capacity || '';
+      const hasTimeLimit = !!(v.availableStart && v.availableEnd);
+      document.getElementById('noTimeLimit').checked = !hasTimeLimit;
+      document.getElementById('availableStart').disabled = !hasTimeLimit;
+      document.getElementById('availableEnd').disabled = !hasTimeLimit;
+      document.getElementById('availableStart').value = hasTimeLimit ? formatTimeValue(v.availableStart) : '';
+      document.getElementById('availableEnd').value = hasTimeLimit ? formatTimeValue(v.availableEnd) : '';
+      document.getElementById('note').value = v.note || '';
+      document.getElementById('form-title').textContent = '車両を編集(ID: ' + v.vehicleId + ')';
+      document.getElementById('cancel-edit').style.display = 'inline-block';
+      window.scrollTo(0, 0);
+    }
+
+    function resetForm() {
+      document.getElementById('vehicle-form').reset();
+      document.getElementById('vehicleId').value = '';
+      document.getElementById('noTimeLimit').checked = false;
+      document.getElementById('availableStart').disabled = false;
+      document.getElementById('availableEnd').disabled = false;
+      document.getElementById('availableStart').value = '09:00';
+      document.getElementById('availableEnd').value = '18:00';
+      document.getElementById('form-title').textContent = '車両を新規登録';
+      document.getElementById('cancel-edit').style.display = 'none';
+    }
+
+    document.getElementById('cancel-edit').addEventListener('click', resetForm);
+
+    const noTimeLimitCheckbox = document.getElementById('noTimeLimit');
+    const startInput = document.getElementById('availableStart');
+    const endInput = document.getElementById('availableEnd');
+
+    noTimeLimitCheckbox.addEventListener('change', function () {
+      const disabled = noTimeLimitCheckbox.checked;
+      startInput.disabled = disabled;
+      endInput.disabled = disabled;
+      if (disabled) {
+        startInput.value = '';
+        endInput.value = '';
+      } else if (!startInput.value && !endInput.value) {
+        startInput.value = '09:00';
+        endInput.value = '18:00';
+      }
+    });
+
+    document.getElementById('vehicle-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      const noLimit = document.getElementById('noTimeLimit').checked;
+      const availableStart = noLimit ? '' : document.getElementById('availableStart').value;
+      const availableEnd = noLimit ? '' : document.getElementById('availableEnd').value;
+
+      if (!noLimit && (!availableStart || !availableEnd)) {
+        showToast('利用可能開始・終了時刻は両方入力するか、「時間帯を制限しない」を選択してください');
+        return;
+      }
+
+      const vehicle = {
+        vehicleId: document.getElementById('vehicleId').value || null,
+        name: document.getElementById('name').value.trim(),
+        plateNumber: document.getElementById('plateNumber').value.trim(),
+        capacity: document.getElementById('capacity').value,
+        availableStart: availableStart,
+        availableEnd: availableEnd,
+        note: document.getElementById('note').value.trim()
+      };
+      google.script.run.withSuccessHandler(function () {
+        showToast('車両情報を保存しました');
+        resetForm();
+        loadVehicles();
+      }).withFailureHandler(onError).saveVehicle(vehicle);
+    });
+
+    function removeVehicle(id) {
+      if (!confirm('この車両を削除しますか?関連する予約・使用不可期間もすべて削除されます。')) return;
+      google.script.run.withSuccessHandler(function () {
+        showToast('車両を削除しました');
+        loadVehicles();
+      }).withFailureHandler(onError).deleteVehicle(id);
+    }
+
+    // ---------- 使用不可期間 ----------
+    function renderVehicleSelect(list) {
+      const sel = document.getElementById('up-vehicle-select');
+      const current = sel.value;
+      sel.innerHTML = '';
+      list.forEach(function (v) {
+        const opt = document.createElement('option');
+        opt.value = v.vehicleId;
+        opt.textContent = v.name + '(ID:' + v.vehicleId + ')';
+        sel.appendChild(opt);
+      });
+      if (current && list.some(function (v) { return String(v.vehicleId) === current; })) {
+        sel.value = current;
+      }
+      loadUnavailablePeriods();
+    }
+
+    document.getElementById('up-vehicle-select').addEventListener('change', loadUnavailablePeriods);
+
+    function loadUnavailablePeriods() {
+      const vehicleId = document.getElementById('up-vehicle-select').value;
+      if (!vehicleId) {
+        renderUnavailablePeriods([]);
+        return;
+      }
+      google.script.run.withSuccessHandler(renderUnavailablePeriods).withFailureHandler(onError).getUnavailablePeriods(Number(vehicleId));
+    }
+
+    function renderUnavailablePeriods(list) {
+      const tbody = document.getElementById('up-table-body');
+      tbody.innerHTML = '';
+      document.getElementById('up-empty').style.display = list.length === 0 ? 'block' : 'none';
+      list.forEach(function (p) {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>' + formatDateTime(p.start) + ' 〜 ' + formatDateTime(p.end) + '</td>' +
+          '<td>' + escapeHtml(p.reason || '') + '</td>' +
+          '<td><button class="btn btn-sm btn-danger" onclick="removeUnavailablePeriod(' + p.id + ')">削除</button></td>';
+        tbody.appendChild(tr);
+      });
+    }
+
+    function formatDateTime(v) {
+      const d = new Date(v);
+      const pad = function (n) { return ('0' + n).slice(-2); };
+      return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    }
+
+    document.getElementById('up-add').addEventListener('click', function () {
+      const vehicleId = document.getElementById('up-vehicle-select').value;
+      const start = document.getElementById('up-start').value;
+      const end = document.getElementById('up-end').value;
+      const reason = document.getElementById('up-reason').value.trim();
+      if (!vehicleId) { showToast('先に車両を登録してください'); return; }
+      if (!start || !end) { showToast('開始日時・終了日時を入力してください'); return; }
+      if (new Date(start) >= new Date(end)) { showToast('終了日時は開始日時より後にしてください'); return; }
+
+      google.script.run.withSuccessHandler(function () {
+        showToast('使用不可期間を登録しました');
+        document.getElementById('up-start').value = '';
+        document.getElementById('up-end').value = '';
+        document.getElementById('up-reason').value = '';
+        loadUnavailablePeriods();
+      }).withFailureHandler(onError).saveUnavailablePeriod({
+        vehicleId: Number(vehicleId), start: start, end: end, reason: reason
+      });
+    });
+
+    function removeUnavailablePeriod(id) {
+      if (!confirm('この使用不可期間を削除しますか?')) return;
+      google.script.run.withSuccessHandler(function () {
+        showToast('削除しました');
+        loadUnavailablePeriods();
+      }).withFailureHandler(onError).deleteUnavailablePeriod(id);
+    }
+
+    function onError(err) {
+      alert('エラーが発生しました: ' + (err.message || err));
+    }
+
+    loadVehicles();
+  </script>
+</body>
+</html>

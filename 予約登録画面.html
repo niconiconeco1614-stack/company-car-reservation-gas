@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+      background: #f4f6f8;
+      margin: 0;
+      padding: 20px;
+      color: #2a2f36;
+    }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    .nav { margin-bottom: 20px; }
+    .nav a {
+      display: inline-block;
+      margin-right: 8px;
+      padding: 6px 14px;
+      background: #fff;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      text-decoration: none;
+      color: #2a2f36;
+      font-size: 13px;
+    }
+    .nav a.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      max-width: 560px;
+    }
+    .card h2 { font-size: 16px; margin-top: 0; margin-bottom: 14px; border-left: 4px solid #2563eb; padding-left: 8px; }
+    label { display: block; font-size: 12px; color: #57606a; margin-bottom: 4px; margin-top: 14px; }
+    label:first-child { margin-top: 0; }
+    input, select, textarea {
+      width: 100%; padding: 8px 10px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 14px;
+    }
+    .time-row { display: flex; gap: 12px; }
+    .time-row > div { flex: 1; }
+    .btn {
+      padding: 10px 20px; border: none; border-radius: 6px; font-size: 14px;
+      cursor: pointer; font-weight: 600; margin-top: 20px;
+    }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-primary:disabled { background: #a5b4cf; cursor: not-allowed; }
+    .hint { font-size: 12px; color: #8b949e; margin-top: 4px; }
+    .alert {
+      padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 14px; display: none;
+    }
+    .alert-error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .alert-success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+    .empty { color: #8b949e; font-size: 13px; padding: 12px 0; }
+
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      align-items: center; justify-content: center; z-index: 1000;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal-box {
+      background: #fff; border-radius: 12px; padding: 28px 32px; max-width: 360px; text-align: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    .modal-icon { font-size: 40px; margin-bottom: 8px; }
+    .modal-title { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
+    .modal-desc { font-size: 13px; color: #57606a; margin-bottom: 20px; line-height: 1.6; white-space: pre-line; }
+    .modal-box .btn { margin-top: 0; }
+  </style>
+</head>
+<body>
+  <div class="modal-overlay" id="success-modal">
+    <div class="modal-box">
+      <div class="modal-icon">✅</div>
+      <div class="modal-title">予約を登録しました</div>
+      <div class="modal-desc" id="modal-desc"></div>
+      <button type="button" class="btn btn-primary" id="modal-close-btn">予約確認画面へ戻る</button>
+    </div>
+  </div>
+  <h1>🚗 社用車予約管理 - 予約登録</h1>
+  <div class="nav">
+    <a href="<?!= webAppUrl ?>?page=master">マスタ画面</a>
+    <a href="<?!= webAppUrl ?>?page=reservation">予約確認画面</a>
+  </div>
+
+  <div class="card">
+    <h2>予約内容を入力</h2>
+
+    <div class="alert alert-error" id="error-box"></div>
+    <div class="alert alert-success" id="success-box"></div>
+
+    <form id="reservation-form">
+      <label>車両 *</label>
+      <select id="vehicleId" required></select>
+      <div class="empty" id="no-vehicle" style="display:none;">先にマスタ画面で車両を登録してください。</div>
+      <div class="hint" id="vehicle-hint"></div>
+
+      <label>利用開始日 *</label>
+      <input type="date" id="startDate" required>
+      <label>開始時刻 *</label>
+      <input type="time" id="startTime" step="1800" required>
+
+      <label>返却日 *</label>
+      <input type="date" id="endDate" required>
+      <label>返却時刻 *</label>
+      <input type="time" id="endTime" step="1800" required>
+
+      <div class="hint">30分単位でご入力ください。日をまたぐ利用の場合は返却日を変更してください(利用可能時間に制限のある車両では日をまたぐ予約はできません)</div>
+
+      <label>利用者名 *</label>
+      <input type="text" id="userName" required placeholder="例:総務部 山田">
+
+      <label>利用目的</label>
+      <input type="text" id="purpose" placeholder="例:取引先訪問">
+
+      <label>行き先</label>
+      <input type="text" id="destination" placeholder="例:○○株式会社 本社">
+
+      <button type="submit" class="btn btn-primary" id="submit-btn">予約を登録する</button>
+    </form>
+  </div>
+
+  <script>
+    const WEBAPP_URL = '<?!= webAppUrl ?>';
+    const PREFILL = <?!= JSON.stringify(prefill) ?>;
+
+    let vehicles = [];
+
+    function loadVehicles() {
+      google.script.run.withSuccessHandler(function (list) {
+        vehicles = list;
+        const sel = document.getElementById('vehicleId');
+        sel.innerHTML = '';
+        if (list.length === 0) {
+          document.getElementById('no-vehicle').style.display = 'block';
+          document.getElementById('submit-btn').disabled = true;
+          return;
+        }
+        list.forEach(function (v) {
+          const opt = document.createElement('option');
+          opt.value = v.vehicleId;
+          opt.textContent = v.name + (v.plateNumber ? '(' + v.plateNumber + ')' : '');
+          sel.appendChild(opt);
+        });
+        if (PREFILL.vehicleId && list.some(function (v) { return String(v.vehicleId) === String(PREFILL.vehicleId); })) {
+          sel.value = PREFILL.vehicleId;
+        }
+        updateVehicleHint();
+      }).withFailureHandler(onError).getVehicles();
+    }
+
+    document.getElementById('vehicleId').addEventListener('change', updateVehicleHint);
+
+    function updateVehicleHint() {
+      const vehicleId = document.getElementById('vehicleId').value;
+      const v = vehicles.find(function (x) { return String(x.vehicleId) === String(vehicleId); });
+      const hint = document.getElementById('vehicle-hint');
+      if (!v) { hint.textContent = ''; return; }
+      hint.textContent = (v.availableStart && v.availableEnd)
+        ? '利用可能時間: ' + v.availableStart + ' 〜 ' + v.availableEnd
+        : '利用可能時間: 制限なし(24時間・日をまたぐ利用も可)';
+    }
+
+    // URLパラメータからの初期値反映
+    if (PREFILL.startDate) document.getElementById('startDate').value = PREFILL.startDate;
+    if (PREFILL.startTime) document.getElementById('startTime').value = PREFILL.startTime;
+    if (PREFILL.endDate) document.getElementById('endDate').value = PREFILL.endDate;
+    if (PREFILL.endTime) document.getElementById('endTime').value = PREFILL.endTime;
+    if (!PREFILL.startDate) {
+      const t = new Date();
+      const pad = function (n) { return ('0' + n).slice(-2); };
+      const todayStr = t.getFullYear() + '-' + pad(t.getMonth() + 1) + '-' + pad(t.getDate());
+      document.getElementById('startDate').value = todayStr;
+      if (!PREFILL.endDate) document.getElementById('endDate').value = todayStr;
+    }
+    // 開始日を変更したら、返却日が開始日より前にならないよう自動追従(ユーザーが個別に変更すればそちらが優先)
+    let endDateTouched = !!PREFILL.endDate;
+    document.getElementById('endDate').addEventListener('input', function () { endDateTouched = true; });
+    document.getElementById('startDate').addEventListener('change', function () {
+      if (!endDateTouched) {
+        document.getElementById('endDate').value = document.getElementById('startDate').value;
+      }
+    });
+
+    document.getElementById('reservation-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      hideAlerts();
+
+      const reservation = {
+        vehicleId: document.getElementById('vehicleId').value,
+        startDate: document.getElementById('startDate').value,
+        startTime: document.getElementById('startTime').value,
+        endDate: document.getElementById('endDate').value,
+        endTime: document.getElementById('endTime').value,
+        userName: document.getElementById('userName').value.trim(),
+        purpose: document.getElementById('purpose').value.trim(),
+        destination: document.getElementById('destination').value.trim()
+      };
+
+      if (!reservation.vehicleId || !reservation.startDate || !reservation.startTime ||
+          !reservation.endDate || !reservation.endTime || !reservation.userName) {
+        showError('車両・利用開始日時・返却日時・利用者名は必須です。');
+        return;
+      }
+
+      const submitBtn = document.getElementById('submit-btn');
+      submitBtn.disabled = true;
+      submitBtn.textContent = '登録中...';
+
+      google.script.run
+        .withSuccessHandler(function (saved) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = '予約を登録する';
+          document.getElementById('reservation-form').reset();
+          showSuccessModal(saved);
+        })
+        .withFailureHandler(function (err) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = '予約を登録する';
+          showError(err && err.message ? err.message : String(err));
+        })
+        .saveReservation(reservation);
+    });
+
+    function showSuccessModal(saved) {
+      document.getElementById('modal-desc').textContent =
+        '予約ID: ' + saved.reservationId + '\n3秒後に予約確認画面へ自動的に戻ります。';
+      document.getElementById('success-modal').classList.add('show');
+      setTimeout(goToReservationPage, 3000);
+    }
+
+    function goToReservationPage() {
+      window.top.location.href = WEBAPP_URL + '?page=reservation';
+    }
+
+    document.getElementById('modal-close-btn').addEventListener('click', goToReservationPage);
+
+    function hideAlerts() {
+      document.getElementById('error-box').style.display = 'none';
+      document.getElementById('success-box').style.display = 'none';
+    }
+    function showError(msg) {
+      const box = document.getElementById('error-box');
+      box.textContent = msg;
+      box.style.display = 'block';
+    }
+    function showSuccess(msg) {
+      const box = document.getElementById('success-box');
+      box.textContent = msg;
+      box.style.display = 'block';
+    }
+
+    function onError(err) {
+      showError(err && err.message ? err.message : String(err));
+    }
+
+    loadVehicles();
+  </script>
+</body>
+</html>
