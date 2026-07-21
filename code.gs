@@ -10,7 +10,7 @@ const SHEET_RESERVATION = '予約データ';
 
 const VEHICLE_HEADERS = ['車両ID', '車種名', 'ナンバープレート', '定員', '利用可能開始時刻', '利用可能終了時刻', '備考'];
 const UNAVAILABLE_HEADERS = ['ID', '車両ID', '開始日時', '終了日時', '理由'];
-const RESERVATION_HEADERS = ['予約ID', '車両ID', '開始日時', '終了日時', '利用者名', '利用目的', '行き先', '登録日時'];
+const RESERVATION_HEADERS = ['予約ID', '車両ID', '開始日時', '終了日時', '利用者名', '利用目的', '行き先', '登録日時', 'シリーズID'];
 
 // ==================== 初期化 ====================
 
@@ -357,7 +357,8 @@ function getReservationsForMonthAllVehicles(year, month) {
       end: formatDateTimeCell_(end),
       userName: row[4],
       purpose: row[5],
-      destination: row[6]
+      destination: row[6],
+      seriesId: row[8] || ''
     });
   });
 
@@ -395,7 +396,8 @@ function getReservationsForMonth(vehicleId, year, month) {
       end: formatDateTimeCell_(end),
       userName: row[4],
       purpose: row[5],
-      destination: row[6]
+      destination: row[6],
+      seriesId: row[8] || ''
     });
   });
 
@@ -485,7 +487,7 @@ function saveReservation(reservation) {
   sheet.appendRow([
     newId, reservation.vehicleId, start, end,
     reservation.userName, reservation.purpose || '', reservation.destination || '',
-    new Date()
+    new Date(), ''
   ]);
   reservation.reservationId = newId;
   return reservation;
@@ -564,4 +566,181 @@ function deleteReservation(reservationId) {
     throw new Error('削除対象の予約が見つかりません。(ID: ' + reservationId + ')');
   }
   sheet.deleteRow(rowIndex);
+}
+
+// ==================== 繰り返し予約 ====================
+
+/**
+ * 指定期間内の日本の祝日を、'yyyy-MM-dd' 文字列のSetとして取得する。
+ * Googleが提供する「日本の祝日」公開カレンダーを使うため、追加設定は不要。
+ */
+function getJapaneseHolidays_(startDate, endDate) {
+  const calendar = CalendarApp.getCalendarById('ja.japanese#holiday@group.v.calendar.google.com');
+  const events = calendar.getEvents(startDate, endDate);
+  const tz = Session.getScriptTimeZone();
+  const set = {};
+  events.forEach(function (ev) {
+    const dateStr = Utilities.formatDate(ev.getStartTime(), tz, 'yyyy-MM-dd');
+    set[dateStr] = true;
+  });
+  return set;
+}
+
+/**
+ * 繰り返しルールから、実際に予約する日付(Dateオブジェクト、日帰り)の一覧を生成する。
+ * 終了日・回数は指定させず、開始日から1年後までを上限として自動生成する。
+ * @param {Object} rule {startDate:'yyyy-MM-dd', repeatType:'daily'|'weekly'|'monthly', weekdaysOnly:boolean}
+ * @return {Array<Date>}
+ */
+function buildRecurringDates_(rule) {
+  const start = new Date(rule.startDate + 'T00:00:00');
+  const limit = new Date(start.getFullYear() + 1, start.getMonth(), start.getDate());
+  const dates = [];
+
+  if (rule.repeatType === 'daily') {
+    let holidays = {};
+    if (rule.weekdaysOnly) {
+      holidays = getJapaneseHolidays_(start, limit);
+    }
+    for (let d = new Date(start); d <= limit; d.setDate(d.getDate() + 1)) {
+      const cur = new Date(d);
+      if (rule.weekdaysOnly) {
+        const dow = cur.getDay();
+        const dateStr = Utilities.formatDate(cur, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+        if (dow === 0 || dow === 6 || holidays[dateStr]) continue; // 土日祝を除く
+      }
+      dates.push(cur);
+    }
+  } else if (rule.repeatType === 'weekly') {
+    for (let d = new Date(start); d <= limit; d.setDate(d.getDate() + 7)) {
+      dates.push(new Date(d));
+    }
+  } else if (rule.repeatType === 'monthly') {
+    const dayOfMonth = start.getDate();
+    let monthCursor = 0;
+    while (true) {
+      const expectedMonth = ((start.getMonth() + monthCursor) % 12 + 12) % 12;
+      const candidate = new Date(start.getFullYear(), start.getMonth() + monthCursor, dayOfMonth);
+      if (candidate > limit) break;
+      // new Date()は存在しない日(例:2月31日)を翌月にロールオーバーするため、
+      // 月がずれていたら「その月には該当日が存在しない」とみなしてスキップする
+      if (candidate.getMonth() === expectedMonth) {
+        dates.push(candidate);
+      }
+      monthCursor++;
+    }
+  } else {
+    throw new Error('不正な繰り返し種別です: ' + rule.repeatType);
+  }
+
+  return dates;
+}
+
+/**
+ * 繰り返し予約を登録する。各回ごとに車両の利用可能時間・使用不可期間・既存予約との
+ * 重複をチェックし、重複する日はスキップして他の日程のみ登録する。
+ * @param {Object} rule {
+ *   vehicleId, startDate:'yyyy-MM-dd', startTime:'HH:mm', endTime:'HH:mm',
+ *   userName, purpose, destination, repeatType:'daily'|'weekly'|'monthly', weekdaysOnly:boolean
+ * }
+ * @return {Object} {seriesId, createdCount, skipped: [{date, reason}]}
+ */
+function saveRecurringReservation(rule) {
+  if (!rule.vehicleId || !rule.startDate || !rule.startTime || !rule.endTime || !rule.userName || !rule.repeatType) {
+    throw new Error('車両・開始日・時間・利用者名・繰り返しの種類は必須です。');
+  }
+  if (timeToMinutes_(rule.startTime) >= timeToMinutes_(rule.endTime)) {
+    throw new Error('終了時刻は開始時刻より後にしてください。');
+  }
+
+  const vehicle = getVehicles().find(function (v) { return Number(v.vehicleId) === Number(rule.vehicleId); });
+  if (!vehicle) {
+    throw new Error('指定された車両が見つかりません。');
+  }
+  if (vehicle.availableStart && vehicle.availableEnd) {
+    if (timeToMinutes_(rule.startTime) < timeToMinutes_(vehicle.availableStart) ||
+        timeToMinutes_(rule.endTime) > timeToMinutes_(vehicle.availableEnd)) {
+      throw new Error('この車両の利用可能時間(' + vehicle.availableStart + '〜' + vehicle.availableEnd + ')の範囲外です。');
+    }
+  }
+
+  const occurrenceDates = buildRecurringDates_(rule);
+  if (occurrenceDates.length === 0) {
+    throw new Error('条件に合致する日程がありませんでした。');
+  }
+
+  const tz = Session.getScriptTimeZone();
+  const periods = getUnavailablePeriods(rule.vehicleId);
+  const sheet = getSheet_(SHEET_RESERVATION);
+  let nextId = generateId_(sheet, 1);
+  const seriesId = Utilities.getUuid();
+  const now = new Date();
+
+  const rowsToAppend = [];
+  const skipped = [];
+  // 同じシリーズ内で登録予定の日程同士が重複することはないが、既存データとの重複は都度チェックする
+  const alreadyReserved = []; // {start, end} 今回のバッチ内で確定した予約(既存データと合わせて重複判定に使う)
+
+  occurrenceDates.forEach(function (dateObj) {
+    const dateStr = Utilities.formatDate(dateObj, tz, 'yyyy-MM-dd');
+    const start = new Date(dateStr + 'T' + rule.startTime + ':00');
+    const end = new Date(dateStr + 'T' + rule.endTime + ':00');
+
+    const overlapPeriod = periods.some(function (p) {
+      return new Date(p.start) < end && new Date(p.end) > start;
+    });
+    if (overlapPeriod) {
+      skipped.push({ date: dateStr, reason: '使用不可期間と重複' });
+      return;
+    }
+
+    const overlapExisting = getReservationsOverlapping_(rule.vehicleId, start, end).length > 0;
+    const overlapBatch = alreadyReserved.some(function (r) { return r.start < end && r.end > start; });
+    if (overlapExisting || overlapBatch) {
+      skipped.push({ date: dateStr, reason: '既存の予約と重複' });
+      return;
+    }
+
+    rowsToAppend.push([
+      nextId, rule.vehicleId, start, end,
+      rule.userName, rule.purpose || '', rule.destination || '',
+      now, seriesId
+    ]);
+    alreadyReserved.push({ start: start, end: end });
+    nextId++;
+  });
+
+  if (rowsToAppend.length > 0) {
+    const startRow = sheet.getLastRow() + 1;
+    sheet.getRange(startRow, 1, rowsToAppend.length, RESERVATION_HEADERS.length).setValues(rowsToAppend);
+  }
+
+  return {
+    seriesId: seriesId,
+    createdCount: rowsToAppend.length,
+    skipped: skipped
+  };
+}
+
+/**
+ * 繰り返し予約のシリーズをまとめて削除する
+ * @param {string} seriesId
+ * @return {number} 削除件数
+ */
+function deleteReservationSeries(seriesId) {
+  if (!seriesId) {
+    throw new Error('シリーズIDが指定されていません。');
+  }
+  const sheet = getSheet_(SHEET_RESERVATION);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+  const values = sheet.getRange(2, 1, lastRow - 1, RESERVATION_HEADERS.length).getValues();
+  let deletedCount = 0;
+  for (let i = values.length - 1; i >= 0; i--) {
+    if (values[i][8] === seriesId) {
+      sheet.deleteRow(i + 2);
+      deletedCount++;
+    }
+  }
+  return deletedCount;
 }

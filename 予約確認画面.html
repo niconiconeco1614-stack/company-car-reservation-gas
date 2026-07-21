@@ -130,6 +130,7 @@
       <h3 id="edit-modal-title">予約の編集</h3>
       <input type="hidden" id="edit-reservationId">
       <input type="hidden" id="edit-vehicleId">
+      <input type="hidden" id="edit-seriesId">
 
       <div class="modal-time-row">
         <div>
@@ -163,6 +164,7 @@
 
       <div class="modal-actions">
         <button type="button" class="btn btn-delete" id="edit-delete-btn">削除</button>
+        <button type="button" class="btn btn-delete" id="edit-delete-series-btn" style="display:none;">シリーズを全て削除</button>
         <div>
           <button type="button" class="btn btn-cancel" id="edit-cancel-btn">キャンセル</button>
           <button type="button" class="btn btn-save" id="edit-save-btn">保存</button>
@@ -478,6 +480,7 @@
 
       document.getElementById('edit-reservationId').value = reservation.reservationId;
       document.getElementById('edit-vehicleId').value = reservation.vehicleId;
+      document.getElementById('edit-seriesId').value = reservation.seriesId || '';
       document.getElementById('edit-startDate').value = startParts.date;
       document.getElementById('edit-startTime').value = startParts.time;
       document.getElementById('edit-endDate').value = endParts.date;
@@ -489,6 +492,9 @@
       const vehicle = vehicles.find(function (v) { return String(v.vehicleId) === String(reservation.vehicleId); });
       document.getElementById('edit-modal-title').textContent =
         '予約の編集・削除' + (vehicle ? '(' + vehicle.name + ')' : '');
+
+      const seriesBtn = document.getElementById('edit-delete-series-btn');
+      seriesBtn.style.display = reservation.seriesId ? 'inline-block' : 'none';
 
       document.getElementById('edit-error').style.display = 'none';
       document.getElementById('edit-modal').classList.add('show');
@@ -545,6 +551,22 @@
           showEditError(err && err.message ? err.message : String(err));
         })
         .deleteReservation(reservationId);
+    });
+
+    document.getElementById('edit-delete-series-btn').addEventListener('click', function () {
+      const seriesId = document.getElementById('edit-seriesId').value;
+      if (!seriesId) return;
+      if (!confirm('この繰り返し予約のシリーズを全て削除しますか?この操作は取り消せません。')) return;
+      google.script.run
+        .withSuccessHandler(function (deletedCount) {
+          closeEditModal();
+          loadMonthReservations();
+          alert(deletedCount + '件の予約を削除しました。');
+        })
+        .withFailureHandler(function (err) {
+          showEditError(err && err.message ? err.message : String(err));
+        })
+        .deleteReservationSeries(seriesId);
     });
 
     init();

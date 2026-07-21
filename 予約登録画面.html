@@ -120,6 +120,35 @@
       <label>行き先</label>
       <input type="text" id="destination" placeholder="例:○○株式会社 本社">
 
+      <div class="recurring-box" id="recurring-box">
+        <label style="display:flex; align-items:center; gap:6px; margin-top:16px;">
+          <input type="checkbox" id="isRecurring" style="width:auto;">
+          繰り返し予約にする(スケジュール登録)
+        </label>
+        <div id="recurring-options" style="display:none; margin-top:10px; padding:12px; background:#f8fafc; border-radius:8px;">
+          <label>繰り返しの種類</label>
+          <div style="display:flex; gap:16px; margin-bottom:8px;">
+            <label style="display:flex; align-items:center; gap:4px; margin:0;">
+              <input type="radio" name="repeatType" value="daily" checked style="width:auto;"> 毎日
+            </label>
+            <label style="display:flex; align-items:center; gap:4px; margin:0;">
+              <input type="radio" name="repeatType" value="weekly" style="width:auto;"> 毎週(同じ曜日)
+            </label>
+            <label style="display:flex; align-items:center; gap:4px; margin:0;">
+              <input type="radio" name="repeatType" value="monthly" style="width:auto;"> 毎月(同じ日)
+            </label>
+          </div>
+          <label id="weekdays-only-row" style="display:flex; align-items:center; gap:6px; margin:0;">
+            <input type="checkbox" id="weekdaysOnly" checked style="width:auto;">
+            平日のみ(土日祝を除く)
+          </label>
+          <div class="hint" style="margin-top:8px;">
+            開始日から1年後まで自動生成されます。既存の予約や使用不可期間と重複する日はスキップされます。<br>
+            繰り返し予約は日帰りのみです(返却日は開始日と同じ扱いになります)。
+          </div>
+        </div>
+      </div>
+
       <button type="submit" class="btn btn-primary" id="submit-btn">予約を登録する</button>
     </form>
   </div>
@@ -127,6 +156,26 @@
   <script>
     const WEBAPP_URL = '<?!= webAppUrl ?>';
     const PREFILL = <?!= JSON.stringify(prefill) ?>;
+
+    document.getElementById('isRecurring').addEventListener('change', function () {
+      const checked = this.checked;
+      document.getElementById('recurring-options').style.display = checked ? 'block' : 'none';
+      const endDateInput = document.getElementById('endDate');
+      endDateInput.disabled = checked;
+      if (checked) {
+        endDateInput.value = document.getElementById('startDate').value;
+      }
+    });
+    document.getElementById('startDate').addEventListener('change', function () {
+      if (document.getElementById('isRecurring').checked) {
+        document.getElementById('endDate').value = this.value;
+      }
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="repeatType"]'), function (radio) {
+      radio.addEventListener('change', function () {
+        document.getElementById('weekdays-only-row').style.display = (this.value === 'daily') ? 'flex' : 'none';
+      });
+    });
 
     let vehicles = [];
 
@@ -190,6 +239,47 @@
       e.preventDefault();
       hideAlerts();
 
+      const isRecurring = document.getElementById('isRecurring').checked;
+      const submitBtn = document.getElementById('submit-btn');
+
+      if (isRecurring) {
+        const repeatTypeEl = document.querySelector('input[name="repeatType"]:checked');
+        const rule = {
+          vehicleId: document.getElementById('vehicleId').value,
+          startDate: document.getElementById('startDate').value,
+          startTime: document.getElementById('startTime').value,
+          endTime: document.getElementById('endTime').value,
+          userName: document.getElementById('userName').value.trim(),
+          purpose: document.getElementById('purpose').value.trim(),
+          destination: document.getElementById('destination').value.trim(),
+          repeatType: repeatTypeEl ? repeatTypeEl.value : 'daily',
+          weekdaysOnly: document.getElementById('weekdaysOnly').checked
+        };
+
+        if (!rule.vehicleId || !rule.startDate || !rule.startTime || !rule.endTime || !rule.userName) {
+          showError('車両・開始日・時間・利用者名は必須です。');
+          return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = '登録中...';
+
+        google.script.run
+          .withSuccessHandler(function (result) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = '予約を登録する';
+            document.getElementById('reservation-form').reset();
+            showRecurringResultModal(result);
+          })
+          .withFailureHandler(function (err) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = '予約を登録する';
+            showError(err && err.message ? err.message : String(err));
+          })
+          .saveRecurringReservation(rule);
+        return;
+      }
+
       const reservation = {
         vehicleId: document.getElementById('vehicleId').value,
         startDate: document.getElementById('startDate').value,
@@ -207,7 +297,6 @@
         return;
       }
 
-      const submitBtn = document.getElementById('submit-btn');
       submitBtn.disabled = true;
       submitBtn.textContent = '登録中...';
 
@@ -231,6 +320,18 @@
         '予約ID: ' + saved.reservationId + '\n3秒後に予約確認画面へ自動的に戻ります。';
       document.getElementById('success-modal').classList.add('show');
       setTimeout(goToReservationPage, 3000);
+    }
+
+    function showRecurringResultModal(result) {
+      let msg = result.createdCount + '件の予約を登録しました。';
+      if (result.skipped && result.skipped.length > 0) {
+        msg += '\n\n以下の ' + result.skipped.length + '件は重複のためスキップされました:\n' +
+          result.skipped.map(function (s) { return '・' + s.date + '(' + s.reason + ')'; }).join('\n');
+      }
+      msg += '\n\n閉じるボタンで予約確認画面に戻ります。';
+      document.getElementById('modal-desc').textContent = msg;
+      document.getElementById('success-modal').classList.add('show');
+      // スキップがある場合は内容を読んでもらいたいので自動遷移はしない
     }
 
     function goToReservationPage() {
